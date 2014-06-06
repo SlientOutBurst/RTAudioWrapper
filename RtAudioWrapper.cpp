@@ -31,7 +31,7 @@ RtAudioWrapper::~RtAudioWrapper()
 void RtAudioWrapper::init()
 {
 	cond_notify_ = false;
-	buffer_frames_ = AUDIOBUFFERLEN;
+	buffer_frames_ = BUFF_FRAMES;
 	callback_data_.v_audiodata = &v_audiodata_;
 	callback_data_.mutex = &mutex_;
 	callback_data_.condition_variable = &condition_variable_;
@@ -97,7 +97,7 @@ static int callback_func(void *output_buffer, void *input_buffer, unsigned int n
 	std::condition_variable *condition_variable = c_data->condition_variable;
 	bool* cond_notify = c_data->cond_notify;
 	AudioData audio_data;
-	memcpy(audio_data.data, input_buffer, sizeof(unsigned short) * num_bufferframes);
+	memcpy(audio_data.data, input_buffer, AUDIOBUFFERLEN*2);
 	audio_data.stream_time = stream_time;
 	v_audiodata->push_back(audio_data);
 	*cond_notify = true;
@@ -176,4 +176,59 @@ void RtAudioWrapper::list_devices()
 		}
 	}
 	std::cout << std::endl;
+}
+
+struct WAVHeader
+{	
+	char riff_data[4]; // 'riff' 4
+	int file_length_8; // 4
+	char wave_data[4]; // 'wave' // 4
+	char fmt_data[4]; // 4
+	int fmtlength; // Length of the fmt data (16 bytes) // 4
+	short fmt_tag;  // Format tag: 1 = PCM // 2
+	short channels;     // Channels: 1 = mono, 2 = stereo // 2
+	int sample_rate;  // Samples per second: e.g., 44100 // 4
+	int bytes_per_second; // sample rate * block align // 4
+	short block_align;  // channels * bits/sample / 8 //2 
+	short bits_per_sample;  // 8 or 16 // 2
+	char data_data[4]; // 'data' // 4
+	int data_block_len; // 4
+};
+
+void RtAudioWrapper::generate_wav_header(char *data, const int len)
+{
+	WAVHeader wav_header;
+	printf("%d\n", sizeof(wav_header));
+	wav_header.riff_data[0] = 'R';
+	wav_header.riff_data[1] = 'I';
+	wav_header.riff_data[2] = 'F';
+	wav_header.riff_data[3] = 'F';
+
+	wav_header.wave_data[0] = 'W';
+	wav_header.wave_data[1] = 'A';
+	wav_header.wave_data[2] = 'V';
+	wav_header.wave_data[3] = 'E';
+
+	wav_header.fmt_data[0] = 'f';
+	wav_header.fmt_data[1] = 'm';
+	wav_header.fmt_data[2] = 't';
+	wav_header.fmt_data[3] = ' ';
+
+	wav_header.fmtlength = 0x00000010;
+	wav_header.fmt_tag = 1;
+	wav_header.channels = 2;
+	wav_header.sample_rate = 44100;
+	wav_header.bits_per_sample = (short)16;
+	wav_header.block_align = (short)(wav_header.channels * wav_header.bits_per_sample / 8);
+	wav_header.bytes_per_second = wav_header.sample_rate * wav_header.block_align;
+
+	wav_header.data_data[0] = 'd';
+	wav_header.data_data[1] = 'a';
+	wav_header.data_data[2] = 't';
+	wav_header.data_data[3] = 'a';
+
+	wav_header.data_block_len = wav_header.bytes_per_second * 5;
+	wav_header.file_length_8 = wav_header.data_block_len + 44 - 8;
+	
+	memcpy((char*)data, (char*)&wav_header, len);
 }

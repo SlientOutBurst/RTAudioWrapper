@@ -11,10 +11,13 @@
 #include <thread>
 #include <assert.h>
 
-const unsigned int AUDIOBUFFERLEN = 512;
+typedef signed short MY_TYPE;
+const unsigned int BUFF_FRAMES = 512;
+const int CHANNELS = 2;
+const int AUDIOBUFFERLEN = BUFF_FRAMES * CHANNELS;
 struct AudioData
 {
-	short data[AUDIOBUFFERLEN];
+	MY_TYPE data[AUDIOBUFFERLEN];
 	double stream_time;
 };
 
@@ -30,6 +33,7 @@ public:
 	bool grab();
 	bool retrieve(AudioData &audio_data);
 	void init();
+	void generate_wav_header(char *data, const int len);
 
 private:
 	RtAudioWrapper(const RtAudioWrapper&) {};
