@@ -1,14 +1,15 @@
-#include "RtAudioWrapper.h"
+#include "RtAudioMicrophoneWrapper.h"
+#include "RtAudioSpeakerWrapper.h"
 
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
 
-int main()
+void record()
 {
-	RtAudioWrapper rtaudio;
+	RtAudioMicrophoneWrapper rtaudio;
 	rtaudio.list_devices();
-	if (!rtaudio.open(0))
+	if (!rtaudio.open(5))
 	{
 		printf("open %d error\n", 0);
 		exit(-1);
@@ -27,27 +28,57 @@ int main()
 		{
 			continue;
 		}
-		AudioData data;
+		MicrophoneAudioData data;
 		if (rtaudio.retrieve(data))
 		{
 			if (data_len < 0)
 			{
 				break;
 			}
-			if (data_len - AUDIOBUFFERLEN < 0)
+			if (data_len - MICROPHONE_AUDIOBUFFERLEN < 0)
 			{
-				fwrite((MY_TYPE*)data.data, sizeof(MY_TYPE), data_len, p);
+				fwrite((MICROPHONE_MY_TYPE*)data.data, sizeof(MICROPHONE_MY_TYPE), data_len, p);
 			}
 			else
 			{
-				fwrite((MY_TYPE*)data.data, sizeof(MY_TYPE), AUDIOBUFFERLEN, p);
+				fwrite((MICROPHONE_MY_TYPE*)data.data, sizeof(MICROPHONE_MY_TYPE), MICROPHONE_AUDIOBUFFERLEN, p);
 			}
-			data_len -= AUDIOBUFFERLEN;
-// 			printf("%d\n", data_len);
-// 			printf("%lf\n", data.stream_time);
+			data_len -= MICROPHONE_AUDIOBUFFERLEN;
 		}
 	}
 	fclose(p);
-	system("pause");
+}
+
+void play()
+{
+	RtAudioSpeakerWrapper rtaudio;
+	rtaudio.list_devices();
+	if (!rtaudio.open(0))
+	{
+		printf("open %d error\n", 0);
+		exit(-1);
+	}
+	FILE *p = fopen("Example2.wav", "rb");
+	char header[44];
+	fread(header, sizeof(char), 44, p);
+	SpeakerAudioData data;
+	bool done_flag = false;
+	while (true)
+	{
+		int len = fread(data.data, sizeof(char), SPERKER_AUDIOBUFFERLEN * sizeof(SPERKER_MY_TYPE), p);
+		if (rtaudio.play(data, len) == false)
+		{
+			break;
+		}
+	}
+
+	fclose(p);
+}
+
+int main()
+{
+	//record();
+	play();
+	
 	return 0;
 }
