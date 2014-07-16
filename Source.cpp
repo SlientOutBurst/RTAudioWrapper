@@ -58,7 +58,7 @@ void play()
 		printf("open %d error\n", 0);
 		exit(-1);
 	}
-	FILE *p = fopen("Example2.wav", "rb");
+	FILE *p = fopen("apologize.wav", "rb");
 	char header[44];
 	fread(header, sizeof(char), 44, p);
 	SpeakerAudioData data;
@@ -77,8 +77,8 @@ void play()
 
 int main()
 {
-	//record();
-	play();
+	record();
+	//play();
 	
 	return 0;
 }

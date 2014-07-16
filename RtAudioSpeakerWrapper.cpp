@@ -1,16 +1,11 @@
 #include "RtAudioSpeakerWrapper.h"
 
-struct SpeakerCallbackData 
-{
-	std::deque<SpeakerAudioData> *v_audiodata;
-	std::mutex *mutex;
-	std::condition_variable *condition_variable;
-	bool *cond_notify;
+struct SpeakerCallbackData {
+	RtAudioSpeakerWrapper::lockfreequeue_type *v_audiodata;
 };
 static SpeakerCallbackData callback_data_;
 
-RtAudioSpeakerWrapper::RtAudioSpeakerWrapper()
-{
+RtAudioSpeakerWrapper::RtAudioSpeakerWrapper() {
 	rtaudio_ = std::shared_ptr<RtAudio>(new RtAudio);
 	device_id_ = rtaudio_->getDefaultOutputDevice();
 	num_channels_ = 2;
@@ -18,28 +13,21 @@ RtAudioSpeakerWrapper::RtAudioSpeakerWrapper()
 	init();
 }
 
-RtAudioSpeakerWrapper::~RtAudioSpeakerWrapper()
-{
-	while (v_audiodata_.size() > 0)
-	{
+RtAudioSpeakerWrapper::~RtAudioSpeakerWrapper() {
+	while (!v_audiodata_.empty()) {
 		continue;
 	}
-	if (!rtaudio_)
-	{
+	if (rtaudio_) {
 		rtaudio_->stopStream();
-		if (rtaudio_->isStreamOpen()) 
+		if (rtaudio_->isStreamOpen()) {
 			rtaudio_->closeStream();
+		}
 	}
 }
 
-void RtAudioSpeakerWrapper::init()
-{
-	cond_notify_ = false;
+void RtAudioSpeakerWrapper::init() {
 	buffer_frames_ = SPERKER_BUFF_FRAMES;
 	callback_data_.v_audiodata = &v_audiodata_;
-	callback_data_.mutex = &mutex_;
-	callback_data_.condition_variable = &condition_variable_;
-	callback_data_.cond_notify = &cond_notify_;
 }
 
 RtAudioSpeakerWrapper::RtAudioSpeakerWrapper(int device_id, int num_channel, int sample_rate)
@@ -53,72 +41,48 @@ RtAudioSpeakerWrapper::RtAudioSpeakerWrapper(int device_id, int num_channel, int
 
 bool RtAudioSpeakerWrapper::play(SpeakerAudioData &_audio_data, int len)
 {
-	if (!rtaudio_->isStreamOpen())
-	{
+	if (!rtaudio_->isStreamOpen()) {
 		return false;
 	}
 
-	std::unique_lock<std::mutex> lock(mutex_);
-	if (len > 0)
-	{
+	if (len > 0) {
 		SpeakerAudioData audio_data = _audio_data;
-		v_audiodata_.push_back(audio_data);
-		cond_notify_ = true;
-		condition_variable_.notify_one();
+		while (!v_audiodata_.push(audio_data)) {
+			continue;
+		}
 		return true;
 	}
 	else
 	{
-		if (v_audiodata_.empty() == true)
-		{
+		if (v_audiodata_.empty() == true) {
 			return false;
 		}
-		else
-		{
-			cond_notify_ = true;
-			condition_variable_.notify_one();
-			return true;
-		}
 	}
+	return true;
 }
 
 static int callback_func(void *output_buffer, void *input_buffer, unsigned int num_bufferframes, 
 						 double stream_time, RtAudioStreamStatus status, void *user_data)
 {
 	SpeakerCallbackData *c_data = (SpeakerCallbackData*)user_data;
-	bool* cond_notify = c_data->cond_notify;
-	std::deque<SpeakerAudioData> *v_audiodata = c_data->v_audiodata;
-	std::condition_variable *condition_variable = c_data->condition_variable;
+	RtAudioSpeakerWrapper::lockfreequeue_type *v_audiodata = c_data->v_audiodata;
+	SpeakerAudioData audio_data;
+	while (!v_audiodata->pop(audio_data))
 	{
-		std::unique_lock<std::mutex> lock(*(c_data->mutex));
-		while(!*cond_notify) // used to avoid spurious wakeups 
-		{
-			condition_variable->wait(lock);
-		}
+		continue;
 	}
-	std::unique_lock<std::mutex> lock(*(c_data->mutex));
-	if (v_audiodata->empty())
-	{
-		*cond_notify = false;
-		return 1;
-	}
-	SpeakerAudioData audio_data = v_audiodata->front();
-	v_audiodata->pop_front();
-	*cond_notify = false;
 	memcpy(output_buffer, audio_data.data, SPERKER_AUDIOBUFFERLEN*2);
 	return 0;
 }
 
-bool RtAudioSpeakerWrapper::open(const int divice_id)
-{
+bool RtAudioSpeakerWrapper::open(const int divice_id) {
 	assert(rtaudio_);
 	RtAudio::StreamParameters parameters;
 	parameters.deviceId = divice_id;
 	parameters.nChannels = num_channels_;
 	parameters.firstChannel = 0;
 	rtaudio_->openStream(&parameters, NULL, RTAUDIO_SINT16, sample_rate_, &buffer_frames_, &callback_func, (void*)&callback_data_);
-	if (rtaudio_->isStreamOpen())
-	{
+	if (rtaudio_->isStreamOpen()) {
 		rtaudio_->startStream();
 		return true;
 	}
@@ -127,8 +91,7 @@ bool RtAudioSpeakerWrapper::open(const int divice_id)
 
 void RtAudioSpeakerWrapper::list_devices()
 {
-	if (rtaudio_)
-	{
+	if (!rtaudio_) {
 		return;
 	}
 	RtAudio::DeviceInfo info;
