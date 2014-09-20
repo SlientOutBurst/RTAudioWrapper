@@ -34,17 +34,19 @@ RtAudioMicrophoneWrapper::RtAudioMicrophoneWrapper(int device_id, int num_channe
 	num_channels_ = num_channel;
 	sample_rate_ = sample_rate;
 	init();
+    is_grabed_ = false;
 }
 
 bool RtAudioMicrophoneWrapper::grab() {
 	if (!rtaudio_->isStreamOpen()) {
 		return false;
 	}
+    is_grabed_ = false;
 	while (!v_audiodata_.pop(audio_data_))
 	{
 		continue;
 	}
-	return is_grabed_;
+	return is_grabed_ = true;
 }
 
 bool RtAudioMicrophoneWrapper::retrieve(MicrophoneAudioData &audio_data)
